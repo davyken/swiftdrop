@@ -4,9 +4,21 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#0a0a0f"/>
+<meta name="description" content="Zero-cloud P2P file transfer across any device. Works offline."/>
 <title>SwiftDrop — Instant File Transfer</title>
+<link rel="manifest" href="data:application/json,{
+  &quot;name&quot;:&quot;SwiftDrop&quot;,
+  &quot;short_name&quot;:&quot;SwiftDrop&quot;,
+  &quot;description&quot;:&quot;Instant P2P file transfer&quot;,
+  &quot;start_url&quot;:&quot;.&quot;,
+  &quot;display&quot;:&quot;standalone&quot;,
+  &quot;background_color&quot;:&quot;#0a0a0f&quot;,
+  &quot;theme_color&quot;:&quot;#00f5c4&quot;,
+  &quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2300f5c4'/><text y='.9em' font-size='80' x='10'>⚡</text></svg>&quot;,&quot;sizes&quot;:&quot;any&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]
+}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
 <style>
@@ -384,11 +396,66 @@ main { flex: 1; padding: 48px 32px; max-width: 960px; width: 100%; margin: 0 aut
 .toast.ok { background: rgba(0,245,196,0.1); border: 1px solid rgba(0,245,196,0.25); color: var(--accent); }
 .toast.er { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); color: #fca5a5; }
 .toast.in { background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.25); color: #c4b5fd; }
+
+/* ─── OFFLINE BANNER ─── */
+#offlineBanner {
+  display: none; position: fixed; top: 60px; left: 0; right: 0; z-index: 300;
+  background: rgba(245,158,11,0.12); border-bottom: 1px solid rgba(245,158,11,0.3);
+  padding: 10px 24px; text-align: center;
+  font-size: 0.75rem; color: #fcd34d;
+  backdrop-filter: blur(12px);
+  animation: slideDown 0.3s ease;
+}
+#offlineBanner.show { display: flex; align-items: center; justify-content: center; gap: 10px; }
+@keyframes slideDown { from { transform: translateY(-100%); opacity:0; } to { transform: translateY(0); opacity:1; } }
+#offlineBanner .ob-dot { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; flex-shrink: 0; }
+
+/* ─── INSTALL PROMPT ─── */
+#installBanner {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 16px 24px; gap: 14px; align-items: center;
+  backdrop-filter: blur(20px);
+  animation: slideUp 0.3s ease;
+}
+#installBanner.show { display: flex; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+#installBanner .ib-text { flex: 1; font-size: 0.78rem; color: var(--text2); line-height: 1.5; }
+#installBanner .ib-text strong { color: var(--text); display: block; margin-bottom: 2px; font-family: 'Syne', sans-serif; }
+.btn-install { padding: 9px 18px; background: var(--accent); color: #000; border: none; border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+.btn-install:hover { background: #00e0b4; }
+.btn-ib-close { background: none; border: none; color: var(--text3); font-size: 1.2rem; cursor: pointer; padding: 4px 8px; transition: color 0.2s; }
+.btn-ib-close:hover { color: var(--text); }
+
+/* ─── OFFLINE MODE BADGE on transfer view ─── */
+.offline-mode-badge {
+  display: none; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+  font-size: 0.7rem; color: #fcd34d; margin-bottom: 16px;
+}
+.offline-mode-badge.show { display: inline-flex; }
 </style>
 </head>
 <body>
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
+
+<!-- Offline banner -->
+<div id="offlineBanner">
+  <div class="ob-dot"></div>
+  <span>You're offline — transfers paused. Previously received files are still available below.</span>
+</div>
+
+<!-- Install to home screen prompt -->
+<div id="installBanner">
+  <div class="ib-text">
+    <strong>⚡ Install SwiftDrop</strong>
+    Add to your home screen for instant access — works offline too.
+  </div>
+  <button class="btn-install" id="btnInstall">Install App</button>
+  <button class="btn-ib-close" onclick="dismissInstall()">✕</button>
+</div>
 
 <div id="app">
 <header>
@@ -475,6 +542,7 @@ main { flex: 1; padding: 48px 32px; max-width: 960px; width: 100%; margin: 0 aut
     </div>
     <div class="room-chip" id="roleChip" style="background:var(--violet-dim);border-color:rgba(124,58,237,0.25);color:#c4b5fd;"></div>
   </div>
+  <div class="offline-mode-badge" id="offlineBadge">⚡ Offline mode — P2P still works on LAN, but room creation needs internet</div>
 
   <div class="peers-strip" id="peersStrip">
     <span class="peers-label">Peers</span>
@@ -555,11 +623,32 @@ const CHUNK = 262144;          // 256 KB chunks for maximum throughput
 const MAX_BUFFERED = 8388608;  // 8 MB max buffer before backpressure
 const LOW_WATERMARK = 2097152; // 2 MB resume threshold
 const WS_URL = 'wss://swiftdrop-5i8j.onrender.com';
+
+// ICE config: STUN (free) + TURN relay servers (free tier via Open Relay)
+// TURN ensures P2P works even behind strict firewalls, double-NAT, corporate networks
 const ICE = [
+  // STUN — helps find direct path (works on most home/mobile networks)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' }
+  { urls: 'stun:stun3.l.google.com:19302' },
+  // TURN — relay fallback (works on 100% of networks, slightly slower)
+  // Free public TURN servers via Open Relay Project
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
 ];
 
 // ── STATE ───────────────────────────────────────────────────────
@@ -596,23 +685,40 @@ const dbClear = () => new Promise((res,rej) => { const r = tx('readwrite').clear
 const dbGet = id => new Promise((res,rej) => { const r = tx().get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
 
 // ── WEBSOCKET SIGNALING ─────────────────────────────────────────
+let wsRetryDelay = 2000;
+let wsRetryTimer = null;
+
 function connectWS() {
+  // Don't try to connect when offline
+  if (!navigator.onLine) {
+    setStatus('', 'Offline');
+    return;
+  }
   ws = new WebSocket(WS_URL);
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
     setStatus('online', 'Server connected');
+    wsRetryDelay = 2000; // reset backoff on success
     toast('Connected to server', 'in');
   };
 
   ws.onclose = () => {
-    setStatus('', 'Disconnected');
-    setTimeout(connectWS, 2000); // auto-reconnect
+    ws = null;
+    if (navigator.onLine) {
+      setStatus('', 'Reconnecting…');
+      // Exponential backoff: 2s → 4s → 8s → max 30s
+      wsRetryTimer = setTimeout(() => {
+        wsRetryDelay = Math.min(wsRetryDelay * 1.5, 30000);
+        connectWS();
+      }, wsRetryDelay);
+    } else {
+      setStatus('', 'Offline');
+    }
   };
 
   ws.onerror = () => {
-    setStatus('', 'Server unreachable');
-    toast('Cannot reach server — is server.js running?', 'er');
+    // onclose will handle retry
   };
 
   ws.onmessage = async (e) => {
@@ -1171,10 +1277,132 @@ function emoji(name) {
   return e[name.split('.').pop().toLowerCase()] || '📁';
 }
 
+// ── ONLINE / OFFLINE HANDLING ────────────────────────────────────
+function handleOnline() {
+  document.getElementById('offlineBanner').classList.remove('show');
+  document.getElementById('offlineBadge').classList.remove('show');
+  setStatus('online', 'Back online');
+  toast('Back online!', 'ok');
+  // Reconnect WS if not already connected
+  if (!ws || ws.readyState > 1) {
+    clearTimeout(wsRetryTimer);
+    wsRetryDelay = 2000;
+    connectWS();
+  }
+}
+
+function handleOffline() {
+  document.getElementById('offlineBanner').classList.add('show');
+  document.getElementById('offlineBadge').classList.add('show');
+  setStatus('', 'Offline');
+  toast('You\'re offline — saved files still accessible', 'in');
+  // Close WS cleanly
+  if (ws) { try { ws.close(); } catch(e){} ws = null; }
+}
+
+window.addEventListener('online', handleOnline);
+window.addEventListener('offline', handleOffline);
+
+// ── PWA INSTALL PROMPT ────────────────────────────────────────────
+let installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  // Only show if not already installed
+  if (!window.matchMedia('(display-mode: standalone)').matches) {
+    setTimeout(() => document.getElementById('installBanner').classList.add('show'), 3000);
+  }
+});
+
+document.getElementById('btnInstall').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  if (outcome === 'accepted') {
+    toast('SwiftDrop installed!', 'ok');
+    document.getElementById('installBanner').classList.remove('show');
+  }
+  installPrompt = null;
+});
+
+function dismissInstall() {
+  document.getElementById('installBanner').classList.remove('show');
+  installPrompt = null;
+}
+
+// ── SERVICE WORKER (offline cache) ───────────────────────────────
+// Inlined SW code — caches the app shell so it loads offline
+if ('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'swiftdrop-v1';
+const SHELL = [
+  self.registration.scope,
+  'https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap'
+];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => {
+      // Cache what we can, ignore failures for external resources
+      return Promise.allSettled(SHELL.map(url => c.add(url).catch(() => {})));
+    }).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  // Network-first for signaling server (always needs fresh)
+  if (e.request.url.includes('onrender.com')) return;
+  // Cache-first for everything else (fonts, the app itself)
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if (cached) return cached;
+      return fetch(e.request).then(response => {
+        // Cache successful GET responses
+        if (response.ok && e.request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return response;
+      }).catch(() => cached || new Response('Offline', { status: 503 }));
+    })
+  );
+});
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swUrl, { scope: '/' })
+    .then(reg => {
+      console.log('SW registered:', reg.scope);
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('App updated — refresh for latest version', 'in');
+          }
+        });
+      });
+    })
+    .catch(err => console.warn('SW registration failed (normal in some browsers):', err));
+}
+
 // ── BOOT ────────────────────────────────────────────────────────
 openDB().then(() => {
   renderRecv(); updateStorage();
-  connectWS();
+  // Check initial online state
+  if (!navigator.onLine) {
+    handleOffline();
+  } else {
+    connectWS();
+  }
 }).catch(err => toast('DB error: '+err.message, 'er'));
 </script>
 </body>
